@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v52/github"
@@ -90,9 +91,15 @@ func main() {
 
 	totalTime := time.Duration(0)
 	totalNumberOfMergedPullRequests := 0
+	untrackedPullRequests := 0
 
 	for _, pr := range pullRequests {
 		commits, _, _ := ghClient.PullRequests.ListCommits(ctx, *owner, *repo, *pr.Number, &github.ListOptions{})
+		branch := *pr.Head.Label
+		if strings.Contains(branch, "noticket") {
+			untrackedPullRequests = untrackedPullRequests + 1
+		}
+
 		firstCommitTime := commits[0].Commit.Author.Date
 		mergeTime := *pr.MergedAt
 		diff := mergeTime.Sub(firstCommitTime.Time)
@@ -101,12 +108,16 @@ func main() {
 	}
 
 	metrics := Metrics{
-		LeadTimeToMerge: (totalTime / time.Duration(totalNumberOfMergedPullRequests)).Round(time.Hour),
+		LeadTimeToMerge:          (totalTime / time.Duration(totalNumberOfMergedPullRequests)).Round(time.Hour),
+		TotalPullRequests:        totalNumberOfMergedPullRequests,
+		PullRequestsWithoutIssue: untrackedPullRequests,
 	}
 
-	fmt.Println(fmt.Sprintf("LeadTimeToMerge %s", metrics.LeadTimeToMerge))
+	fmt.Println(metrics)
 }
 
 type Metrics struct {
-	LeadTimeToMerge time.Duration
+	LeadTimeToMerge          time.Duration
+	TotalPullRequests        int
+	PullRequestsWithoutIssue int
 }
