@@ -82,11 +82,10 @@ func main() {
 	}
 
 	ctx := context.Background()
-	owner, repo := getRepoToStudy()
-
 	httpClient := setupHttpClient()
 	ghClient := github.NewClient(httpClient)
 
+	owner, repo := getRepoToStudy()
 	pullRequests := getPullRequestsFromLastTwoWeeks(ctx, ghClient, owner, repo)
 
 	totalTime := time.Duration(0)
