@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,16 +19,37 @@ func setupHttpClient() *http.Client {
 	return client
 }
 
+func getRepo() (*string, *string) {
+	ownerName := flag.String("owner", "", "Specify the owner name")
+	repoName := flag.String("repo", "", "Specify the repo name")
+	flag.Parse()
+
+	if *ownerName == "" || *repoName == "" {
+		log.Fatal("Please specify an owner and repo!")
+	}
+
+	return ownerName, repoName
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error in loading .env file!")
 	}
 
+	owner, repo := getRepo()
+
 	httpClient := setupHttpClient()
 	ghClient := github.NewClient(httpClient)
 
-	repos, _, _ := ghClient.Repositories.List(context.Background(), "JaspervanRiet", nil)
+	repos, _, _ := ghClient.PullRequests.List(
+		context.Background(),
+		*owner,
+		*repo,
+		&github.PullRequestListOptions{State: "closed"})
 
-	fmt.Println(repos)
+	for _, r := range repos {
+		fmt.Println(*r.Title)
+	}
+
 }
