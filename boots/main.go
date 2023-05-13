@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/google/go-github/v52/github"
@@ -15,13 +14,23 @@ import (
 	"golang.org/x/oauth2"
 )
 
+type service struct {
+	ghClient   *github.Client
+	repository *Repository
+}
+
+type Repository struct {
+	owner string
+	name  string
+}
+
 func setupHttpClient() *http.Client {
 	token := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")})
 	client := oauth2.NewClient(context.Background(), token)
 	return client
 }
 
-func getRepoToStudy() (*string, *string) {
+func getRepoToStudy() *Repository {
 	ownerName := flag.String("owner", "", "Specify the owner name")
 	repoName := flag.String("repo", "", "Specify the repo name")
 	flag.Parse()
@@ -30,7 +39,7 @@ func getRepoToStudy() (*string, *string) {
 		log.Fatal("Please specify an owner and repo!")
 	}
 
-	return ownerName, repoName
+	return &Repository{owner: *ownerName, name: *repoName}
 }
 
 func getPullRequestsFromLastTwoWeeks(ctx context.Context, ghClient *github.Client, owner *string, repo *string) []*github.PullRequest {
@@ -55,7 +64,7 @@ func getPullRequestsFromLastTwoWeeks(ctx context.Context, ghClient *github.Clien
 		}
 
 		for _, p := range pullRequests {
-			if p.MergedAt == nil {
+			if p.GetMergedAt().IsZero() {
 				continue
 			}
 			weeksAgo := now.Sub(p.MergedAt.Time).Hours() / (24 * 7)
@@ -86,41 +95,35 @@ func main() {
 	httpClient := setupHttpClient()
 	ghClient := github.NewClient(httpClient)
 
-	owner, repo := getRepoToStudy()
-	pullRequests := getPullRequestsFromLastTwoWeeks(ctx, ghClient, owner, repo)
+	repo := getRepoToStudy()
+	pullRequests := getPullRequestsFromLastTwoWeeks(ctx, ghClient, &repo.owner, &repo.name)
 
-	totalTime := time.Duration(0)
-	totalNumberOfMergedPullRequests := 0
-	untrackedPullRequests := 0
-
-	for _, pr := range pullRequests {
-		commits, _, _ := ghClient.PullRequests.ListCommits(ctx, *owner, *repo, *pr.Number, &github.ListOptions{})
-		branch := *pr.Head.Label
-		if strings.Contains(branch, "noticket") {
-			untrackedPullRequests = untrackedPullRequests + 1
-		}
-
-		deployments, _, _ := ghClient.Repositories.ListDeployments(ctx, *owner, *repo, &github.DeploymentsListOptions{})
-		fmt.Println(deployments[0].CreatedAt)
-
-		firstCommitTime := commits[0].Commit.Author.Date
-		mergeTime := *pr.MergedAt
-		diff := mergeTime.Sub(firstCommitTime.Time)
-		totalTime = totalTime + diff
-		totalNumberOfMergedPullRequests = totalNumberOfMergedPullRequests + 1
+	service := MetricsService{
+		ghClient:   ghClient,
+		repository: repo,
 	}
+	metrics := service.AnalyzePullRequests(ctx, pullRequests)
 
-	metrics := Metrics{
-		LeadTimeToMerge:          (totalTime / time.Duration(totalNumberOfMergedPullRequests)).Round(time.Hour),
-		TotalPullRequests:        totalNumberOfMergedPullRequests,
-		PullRequestsWithoutIssue: untrackedPullRequests,
-	}
+	fmt.Println("-------")
+	fmt.Println("METRICS")
+	fmt.Println("-------")
+	fmt.Println(fmt.Sprintf("Total pull request:				%d", metrics.TotalPullRequests))
+	fmt.Println(fmt.Sprintf("Untracked pull requests:			%d", metrics.PullRequestsWithoutIssue))
+	fmt.Println(fmt.Sprintf("Pull requests with reviews:			%d", metrics.PullRequestsWithReview))
+	fmt.Println(fmt.Sprintf("Review time (average):				%d hours", metrics.ReviewTime))
+	fmt.Println(fmt.Sprintf("Time to merge (average):			%d hours", metrics.TimeToMerge))
+	fmt.Println(fmt.Sprintf("Lead time for changes (average):		%d hours", metrics.LeadTimeForChanges))
 
-	fmt.Println(metrics)
 }
 
 type Metrics struct {
-	LeadTimeToMerge          time.Duration
+	// Time for pull request open (review requested) till first review
+	ReviewTime int
+	// Time for pull request open (review requested) till merge
+	TimeToMerge int
+	// Time for pull request open (review requested) till in production
+	LeadTimeForChanges       int
 	TotalPullRequests        int
 	PullRequestsWithoutIssue int
+	PullRequestsWithReview   int
 }
