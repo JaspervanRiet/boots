@@ -155,7 +155,9 @@ func (s *MetricsService) getDeploymentTimesForSHA(deployments []*github.Deployme
 		if value, ok := deploymentShas[sha]; ok {
 			timeForThisDeployment = value
 		}
-		timeDeployment[sha] = timeForThisDeployment
+		if !timeForThisDeployment.IsZero() {
+			timeDeployment[sha] = timeForThisDeployment
+		}
 	}
 
 	return timeDeployment
