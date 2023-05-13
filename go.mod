@@ -1,4 +1,4 @@
-module jaspervanriet.nl/boots
+module github.com/JaspervanRiet/boots
 
 go 1.20
 
