@@ -100,6 +100,9 @@ func main() {
 			untrackedPullRequests = untrackedPullRequests + 1
 		}
 
+		deployments, _, _ := ghClient.Repositories.ListDeployments(ctx, *owner, *repo, &github.DeploymentsListOptions{})
+		fmt.Println(deployments[0].CreatedAt)
+
 		firstCommitTime := commits[0].Commit.Author.Date
 		mergeTime := *pr.MergedAt
 		diff := mergeTime.Sub(firstCommitTime.Time)
