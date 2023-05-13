@@ -21,7 +21,7 @@ type MetricsService service
 // Performs analysis on the given pull requests and returns the calculated metrics
 func (s *MetricsService) AnalyzePullRequests(ctx context.Context, prs []*github.PullRequest) *Metrics {
 	deployments, _, _ := s.ghClient.Repositories.ListDeployments(ctx, s.repository.owner, s.repository.name, &github.DeploymentsListOptions{})
-	deployTimesForPullRequests := s.groupPullRequestsByDeploymentSHA(deployments, prs)
+	deployTimesForPullRequests := s.getDeploymentTimesForSHA(deployments, prs)
 
 	var stats []*pullRequestStatistics
 
@@ -82,6 +82,8 @@ func (s *MetricsService) processPullRequest(ctx context.Context, pr *github.Pull
 		if timeReviewed.IsZero() && e.GetEvent() == eventReviewed {
 			timeReviewed = e.GetSubmittedAt().Time
 			wasReviewed = true
+
+			// We have identified the first review, we know enough
 			break
 		}
 	}
@@ -104,6 +106,7 @@ func (s *MetricsService) processPullRequest(ctx context.Context, pr *github.Pull
 	}
 }
 
+// Returns all the timeline events for a pull request, e.g. review_requested.
 func (s *MetricsService) getAllTimelineEventsForPullRequest(ctx context.Context, pr *github.PullRequest) []*github.Timeline {
 	var allEvents []*github.Timeline
 
@@ -132,9 +135,11 @@ func (s *MetricsService) getAllTimelineEventsForPullRequest(ctx context.Context,
 	return allEvents
 }
 
-// Returns map, with the key representing the SHA of the deployment, and the values
-// representing all SHAs that were a part of that deployment
-func (s *MetricsService) groupPullRequestsByDeploymentSHA(deployments []*github.Deployment, pullRequests []*github.PullRequest) map[string]time.Time {
+// Returns a map with as key the SHA of each pull request, and as value the time when that pull
+// request was deployed
+//
+// Pull requests that were not deployed are not included in the map.
+func (s *MetricsService) getDeploymentTimesForSHA(deployments []*github.Deployment, pullRequests []*github.PullRequest) map[string]time.Time {
 	timeDeployment := make(map[string]time.Time)
 	deploymentShas := make(map[string]time.Time)
 
