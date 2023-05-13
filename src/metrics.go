@@ -154,10 +154,15 @@ func (s *MetricsService) getDeploymentTimesForSHA(deployments []*github.Deployme
 		sha := pr.GetMergeCommitSHA()
 		if value, ok := deploymentShas[sha]; ok {
 			timeForThisDeployment = value
+			// Do not save these, they will be deployed quickly
+		} else {
+			// Do not save times for undeployed pull requests
+			if !timeForThisDeployment.IsZero() {
+				timeDeployment[sha] = timeForThisDeployment
+			}
+
 		}
-		if !timeForThisDeployment.IsZero() {
-			timeDeployment[sha] = timeForThisDeployment
-		}
+
 	}
 
 	return timeDeployment
