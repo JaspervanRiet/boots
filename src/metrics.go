@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/google/go-github/v52/github"
+	"github.com/montanaflynn/stats"
 )
 
 const branchPrefixNoIssue = "noticket"
@@ -23,42 +25,52 @@ func (s *MetricsService) AnalyzePullRequests(ctx context.Context, prs []*github.
 	deployments, _, _ := s.ghClient.Repositories.ListDeployments(ctx, s.repository.owner, s.repository.name, &github.DeploymentsListOptions{})
 	deployTimesForPullRequests := s.getDeploymentTimesForSHA(deployments, prs)
 
-	var stats []*pullRequestStatistics
+	var prStats []*pullRequestStatistics
 
 	for _, pr := range prs {
-		stats = append(stats, s.processPullRequest(ctx, pr, deployTimesForPullRequests))
+		prStats = append(prStats, s.processPullRequest(ctx, pr, deployTimesForPullRequests))
 	}
 
 	untrackedPullRequests := 0
-	pullRequestsWithReview := 0
-	reviewTime, timeToMerge, leadTimeForChanges := 0, 0, 0
+	reviewedPullRequests := 0
+	deployedPullRequests := 0
+	var reviewTime, timeToMerge, leadTimeForChanges []float64
+	totalReviewTime := 0
 
-	for _, stat := range stats {
+	for _, stat := range prStats {
 		if !stat.IsTrackedWithIssue {
 			untrackedPullRequests++
 		}
 
 		if stat.WasReviewed {
-			reviewTime += int(stat.TimeToReview.Hours())
-			pullRequestsWithReview++
+			time := stat.TimeToReview.Hours()
+			totalReviewTime += int(time)
+			reviewTime = append(reviewTime, time)
+			reviewedPullRequests++
 		}
 
-		timeToMerge += int(stat.TimeToMerge.Hours())
+		timeToMerge = append(timeToMerge, float64(stat.TimeToMerge.Hours()))
 
 		if stat.WasDeployed {
-			leadTimeForChanges += int(stat.TimeToProduction.Hours())
+			deployedPullRequests++
+			fmt.Println(stat.TimeToProduction)
+			leadTimeForChanges = append(leadTimeForChanges, float64(stat.TimeToProduction.Hours()))
 		}
 	}
 
 	numberOfPullRequests := len(prs)
+	medianReviewTime, _ := stats.Median(reviewTime)
+	medianTimeToMerge, _ := stats.Median(timeToMerge)
+	medianLeadTimeForChanges, _ := stats.Median(leadTimeForChanges)
 
 	return &Metrics{
-		ReviewTime:               reviewTime / numberOfPullRequests,
-		TimeToMerge:              timeToMerge / numberOfPullRequests,
-		LeadTimeForChanges:       leadTimeForChanges / numberOfPullRequests,
+		AverageReviewTime:        totalReviewTime / reviewedPullRequests,
+		MedianReviewTime:         int(medianReviewTime),
+		MedianTimeToMerge:        int(medianTimeToMerge),
+		MedianLeadTimeForChanges: int(medianLeadTimeForChanges),
 		TotalPullRequests:        numberOfPullRequests,
 		PullRequestsWithoutIssue: untrackedPullRequests,
-		PullRequestsWithReview:   pullRequestsWithReview,
+		PullRequestsWithReview:   reviewedPullRequests,
 	}
 
 }
@@ -121,9 +133,7 @@ func (s *MetricsService) getAllTimelineEventsForPullRequest(ctx context.Context,
 			log.Fatal("Encounted error!", err)
 		}
 
-		for _, t := range timeline {
-			allEvents = append(allEvents, t)
-		}
+		allEvents = append(allEvents, timeline...)
 
 		if resp.NextPage == 0 {
 			break

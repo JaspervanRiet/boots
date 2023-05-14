@@ -96,34 +96,39 @@ func main() {
 	ghClient := github.NewClient(httpClient)
 
 	repo := getRepoToStudy()
+	fmt.Println("Getting pull requests...")
 	pullRequests := getPullRequestsFromLastTwoWeeks(ctx, ghClient, &repo.owner, &repo.name)
 
 	service := MetricsService{
 		ghClient:   ghClient,
 		repository: repo,
 	}
+	fmt.Println("Analyzing pull requests...")
 	metrics := service.AnalyzePullRequests(ctx, pullRequests)
 
 	fmt.Println("-------")
 	fmt.Println("METRICS")
 	fmt.Println("-------")
 	fmt.Println()
-	fmt.Println(fmt.Sprintf("Total pull requests:				%d", metrics.TotalPullRequests))
-	fmt.Println(fmt.Sprintf("Untracked pull requests:			%d", metrics.PullRequestsWithoutIssue))
-	fmt.Println(fmt.Sprintf("Pull requests with reviews:			%d", metrics.PullRequestsWithReview))
-	fmt.Println(fmt.Sprintf("Review time (average):				%d hours", metrics.ReviewTime))
-	fmt.Println(fmt.Sprintf("Time to merge (average):			%d hours", metrics.TimeToMerge))
-	fmt.Println(fmt.Sprintf("Lead time for changes (average):		%d hours", metrics.LeadTimeForChanges))
+	fmt.Printf("Total pull requests:\t\t\t\t%d\n", metrics.TotalPullRequests)
+	fmt.Printf("Untracked pull requests:\t\t\t%d\n", metrics.PullRequestsWithoutIssue)
+	fmt.Printf("Pull requests with reviews:\t\t\t%d\n", metrics.PullRequestsWithReview)
+	fmt.Printf("Review time (average):\t\t\t\t%d hours\n", metrics.AverageReviewTime)
+	fmt.Printf("Review time (median):\t\t\t\t%d hours\n", metrics.MedianReviewTime)
+	fmt.Printf("Time to merge (median):\t\t\t\t%d hours\n", metrics.MedianTimeToMerge)
+	fmt.Printf("Lead time for changes (median):\t\t\t%d hours\n", metrics.MedianLeadTimeForChanges)
 
 }
 
 type Metrics struct {
 	// Time for pull request open (review requested) till first review
-	ReviewTime int
+	AverageReviewTime int
+	// Time for pull request open (review requested) till first review
+	MedianReviewTime int
 	// Time for pull request open (review requested) till merge
-	TimeToMerge int
+	MedianTimeToMerge int
 	// Time for pull request open (review requested) till in production
-	LeadTimeForChanges       int
+	MedianLeadTimeForChanges int
 	TotalPullRequests        int
 	PullRequestsWithoutIssue int
 	PullRequestsWithReview   int
