@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,10 +12,8 @@ import (
 )
 
 const branchPrefixNoIssue = "noticket"
-
 const eventReviewRequested = "review_requested"
 const eventReviewed = "reviewed"
-
 const pullRequestStateClosed = "closed"
 
 type MetricsService service
@@ -53,7 +51,6 @@ func (s *MetricsService) AnalyzePullRequests(ctx context.Context, prs []*github.
 
 		if stat.WasDeployed {
 			deployedPullRequests++
-			fmt.Println(stat.TimeToProduction)
 			leadTimeForChanges = append(leadTimeForChanges, float64(stat.TimeToProduction.Hours()))
 		}
 	}
@@ -141,6 +138,23 @@ func (s *MetricsService) getAllTimelineEventsForPullRequest(ctx context.Context,
 
 		opt.Page = resp.NextPage
 	}
+
+	// Sort by time desc
+	sort.Slice(allEvents, func(i, j int) bool {
+		timeA := allEvents[i].GetCreatedAt().Time
+		if timeA.IsZero() {
+			// Needed for reviews
+			timeA = allEvents[i].GetSubmittedAt().Time
+		}
+		timeB := allEvents[j].GetCreatedAt().Time
+		if timeB.IsZero() {
+			timeB = allEvents[j].GetSubmittedAt().Time
+		}
+
+		// Note that there's still going to be some zero times,
+		// but they are all commits, so we don't care.
+		return timeA.Sub(timeB).Hours() > 0
+	})
 
 	return allEvents
 }
